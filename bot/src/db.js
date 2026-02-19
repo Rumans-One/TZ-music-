@@ -1,25 +1,63 @@
-import pg from 'pg';
+import os
+from contextlib import contextmanager
 
-const { Pool } = pg;
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-export const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 5432),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
-});
 
-export async function getAllApplications() {
-  const result = await pool.query('SELECT * FROM applications ORDER BY created_at DESC;');
-  return result.rows;
-}
+def _dsn() -> str:
+    return (
+        f"host={os.getenv('DB_HOST')} "
+        f"port={os.getenv('DB_PORT', '5432')} "
+        f"dbname={os.getenv('DB_NAME')} "
+        f"user={os.getenv('DB_USER')} "
+        f"password={os.getenv('DB_PASSWORD')}"
+    )
 
-export async function getTodayApplications() {
-  const result = await pool.query(
-    `SELECT * FROM applications
-     WHERE created_at::date = CURRENT_DATE
-     ORDER BY created_at DESC;`
-  );
-  return result.rows;
-}
+
+@contextmanager
+def get_conn():
+    conn = psycopg2.connect(_dsn())
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def init_db() -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS applications (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(120) NOT NULL,
+                    phone VARCHAR(32) NOT NULL,
+                    music_style VARCHAR(120) NOT NULL,
+                    comment TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            conn.commit()
+
+
+def create_application(payload: dict) -> dict:
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO applications (name, phone, music_style, comment)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, name, phone, music_style, comment, created_at;
+                """,
+                (
+                    payload["name"],
+                    payload["phone"],
+                    payload["musicStyle"],
+                    payload["comment"],
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row)
