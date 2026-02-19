@@ -1,54 +1,48 @@
-diff --git a/docker-compose.yml b/docker-compose.yml
-new file mode 100644
-index 0000000000000000000000000000000000000000..c0b8457fbd0a13cb5a2e103d0d6785ef69f08f1c
---- /dev/null
-+++ b/docker-compose.yml
-@@ -0,0 +1,48 @@
-+services:
-+  db:
-+    image: postgres:16-alpine
-+    restart: unless-stopped
-+    environment:
-+      POSTGRES_DB: ${DB_NAME}
-+      POSTGRES_USER: ${DB_USER}
-+      POSTGRES_PASSWORD: ${DB_PASSWORD}
-+    ports:
-+      - "5432:5432"
-+    volumes:
-+      - pg_data:/var/lib/postgresql/data
-+    healthcheck:
-+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-+      interval: 10s
-+      timeout: 5s
-+      retries: 5
-+
-+  backend:
-+    build: ./backend
-+    restart: unless-stopped
-+    env_file: .env
-+    ports:
-+      - "8080:8080"
-+    depends_on:
-+      db:
-+        condition: service_healthy
-+
-+  bot:
-+    build: ./bot
-+    restart: unless-stopped
-+    env_file: .env
-+    ports:
-+      - "8090:8090"
-+    depends_on:
-+      db:
-+        condition: service_healthy
-+
-+  frontend:
-+    build: ./frontend
-+    restart: unless-stopped
-+    ports:
-+      - "3000:80"
-+    depends_on:
-+      - backend
-+
-+volumes:
-+  pg_data:
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bot:
+    build: ./bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8090:8090"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pg_data:
