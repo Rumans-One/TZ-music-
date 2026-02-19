@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from db import create_application, init_db
+from src.db import create_application, init_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
