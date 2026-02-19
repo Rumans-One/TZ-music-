@@ -4,7 +4,6 @@ const submitBtn = document.getElementById('submitBtn');
 const phoneInput = document.getElementById('phone');
 const styleSelect = document.getElementById('musicStyle');
 const customStyleInput = document.getElementById('customStyle');
-const ambientToggle = document.getElementById('ambientToggle');
 
 const PHONE_MAX_LEN = 18;
 
@@ -106,8 +105,11 @@ Object.keys(validators).forEach((field) => {
 
 let audioCtx;
 let ambientNodes;
+let shimmerInterval;
 
 function startAmbient() {
+  if (ambientNodes) return;
+
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
@@ -116,60 +118,76 @@ function startAmbient() {
     audioCtx.resume();
   }
 
-  if (!ambientNodes) {
-    const master = audioCtx.createGain();
-    master.gain.value = 0.03;
-    master.connect(audioCtx.destination);
+  const master = audioCtx.createGain();
+  master.gain.value = 0.018;
+  master.connect(audioCtx.destination);
 
-    const osc1 = audioCtx.createOscillator();
-    const osc2 = audioCtx.createOscillator();
-    const lfo = audioCtx.createOscillator();
-    const lfoGain = audioCtx.createGain();
+  const lowPad = audioCtx.createOscillator();
+  const warmPad = audioCtx.createOscillator();
+  const airyPad = audioCtx.createOscillator();
+  const slowLfo = audioCtx.createOscillator();
+  const slowLfoGain = audioCtx.createGain();
 
-    osc1.type = 'sine';
-    osc2.type = 'triangle';
-    lfo.type = 'sine';
+  lowPad.type = 'sine';
+  warmPad.type = 'sine';
+  airyPad.type = 'triangle';
+  slowLfo.type = 'sine';
 
-    osc1.frequency.value = 220;
-    osc2.frequency.value = 329.63;
-    lfo.frequency.value = 0.12;
-    lfoGain.gain.value = 18;
+  lowPad.frequency.value = 196.0;
+  warmPad.frequency.value = 246.94;
+  airyPad.frequency.value = 293.66;
+  slowLfo.frequency.value = 0.07;
+  slowLfoGain.gain.value = 4;
 
-    lfo.connect(lfoGain);
-    lfoGain.connect(osc1.frequency);
+  slowLfo.connect(slowLfoGain);
+  slowLfoGain.connect(airyPad.frequency);
 
-    osc1.connect(master);
-    osc2.connect(master);
+  lowPad.connect(master);
+  warmPad.connect(master);
+  airyPad.connect(master);
 
-    osc1.start();
-    osc2.start();
-    lfo.start();
+  lowPad.start();
+  warmPad.start();
+  airyPad.start();
+  slowLfo.start();
 
-    ambientNodes = { master, osc1, osc2, lfo };
-  }
+  shimmerInterval = window.setInterval(() => {
+    if (!audioCtx || audioCtx.state !== 'running') return;
 
-  ambientToggle.textContent = '⏸ Выключить ambient';
-  ambientToggle.setAttribute('aria-pressed', 'true');
+    const now = audioCtx.currentTime;
+    const note = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    note.type = 'sine';
+    note.frequency.value = [392.0, 440.0, 493.88][Math.floor(Math.random() * 3)];
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.012, now + 0.18);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+
+    note.connect(gain);
+    gain.connect(master);
+
+    note.start(now);
+    note.stop(now + 1.45);
+  }, 2400);
+
+  ambientNodes = { master, lowPad, warmPad, airyPad, slowLfo };
 }
 
 function stopAmbient() {
   if (ambientNodes) {
-    ambientNodes.osc1.stop();
-    ambientNodes.osc2.stop();
-    ambientNodes.lfo.stop();
+    ambientNodes.lowPad.stop();
+    ambientNodes.warmPad.stop();
+    ambientNodes.airyPad.stop();
+    ambientNodes.slowLfo.stop();
     ambientNodes = null;
   }
-  ambientToggle.textContent = '▶ Включить ambient';
-  ambientToggle.setAttribute('aria-pressed', 'false');
-}
 
-ambientToggle.addEventListener('click', () => {
-  if (ambientNodes) {
-    stopAmbient();
-  } else {
-    startAmbient();
+  if (shimmerInterval) {
+    window.clearInterval(shimmerInterval);
+    shimmerInterval = null;
   }
-});
+}
 
 window.addEventListener(
   'pointerdown',
@@ -186,6 +204,10 @@ window.addEventListener(
   },
   { once: true }
 );
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopAmbient();
+});
 
 toggleCustomStyle();
 
