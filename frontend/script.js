@@ -1,9 +1,13 @@
 const form = document.getElementById('applicationForm');
 const statusEl = document.getElementById('status');
 const submitBtn = document.getElementById('submitBtn');
+
 const phoneInput = document.getElementById('phone');
 const styleSelect = document.getElementById('musicStyle');
 const customStyleInput = document.getElementById('customStyle');
+
+const audioToggle = document.getElementById('audioToggle');
+const ambientAudio = document.getElementById('ambientAudio');
 
 const PHONE_MAX_LEN = 18;
 
@@ -11,11 +15,13 @@ const validators = {
   name: (v) => (v.trim().length >= 2 ? '' : 'Введите имя (минимум 2 символа)'),
   phone: (v) => {
     const cleaned = v.trim();
-    const digits = cleaned.replace(/\D/g, '').length;
+    const digits = cleaned.replace(/\D/g, '');
+
     if (!cleaned) return 'Введите телефон';
     if (cleaned.length > PHONE_MAX_LEN) return `Телефон должен быть не длиннее ${PHONE_MAX_LEN} символов`;
     if (!/^\+?[0-9\s\-()]{10,18}$/.test(cleaned)) return 'Введите корректный телефон';
-    if (digits < 10 || digits > 15) return 'Телефон должен содержать 10–15 цифр';
+    if (digits.length < 10 || digits.length > 15) return 'Телефон должен содержать 10–15 цифр';
+
     return '';
   },
   musicStyle: (value) => {
@@ -54,16 +60,18 @@ function clearErrors() {
 function validateField(field, value) {
   const validate = validators[field];
   if (!validate) return true;
+
   const err = validate(value || '');
   setError(field, err);
   return !err;
 }
 
 function toggleCustomStyle() {
-  const showCustom = styleSelect.value === 'Другое';
-  customStyleInput.hidden = !showCustom;
-  customStyleInput.required = showCustom;
-  if (!showCustom) {
+  const isCustom = styleSelect.value === 'Другое';
+  customStyleInput.hidden = !isCustom;
+  customStyleInput.required = isCustom;
+
+  if (!isCustom) {
     customStyleInput.value = '';
     customStyleInput.setAttribute('aria-invalid', 'false');
   }
@@ -73,6 +81,7 @@ phoneInput.addEventListener('input', () => {
   if (phoneInput.value.length > PHONE_MAX_LEN) {
     phoneInput.value = phoneInput.value.slice(0, PHONE_MAX_LEN);
   }
+
   if (phoneInput.getAttribute('aria-invalid') === 'true') {
     validateField('phone', phoneInput.value);
   }
@@ -94,6 +103,7 @@ Object.keys(validators).forEach((field) => {
   if (!input) return;
 
   input.addEventListener('blur', () => validateField(field, input.value));
+
   if (field !== 'phone' && field !== 'musicStyle') {
     input.addEventListener('input', () => {
       if (input.getAttribute('aria-invalid') === 'true') {
@@ -103,116 +113,68 @@ Object.keys(validators).forEach((field) => {
   }
 });
 
-let audioCtx;
-let ambientNodes;
-let shimmerInterval;
+let audioActivated = false;
 
-function startAmbient() {
-  if (ambientNodes) return;
-
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-
-  const master = audioCtx.createGain();
-  master.gain.value = 0.018;
-  master.connect(audioCtx.destination);
-
-  const lowPad = audioCtx.createOscillator();
-  const warmPad = audioCtx.createOscillator();
-  const airyPad = audioCtx.createOscillator();
-  const slowLfo = audioCtx.createOscillator();
-  const slowLfoGain = audioCtx.createGain();
-
-  lowPad.type = 'sine';
-  warmPad.type = 'sine';
-  airyPad.type = 'triangle';
-  slowLfo.type = 'sine';
-
-  lowPad.frequency.value = 196.0;
-  warmPad.frequency.value = 246.94;
-  airyPad.frequency.value = 293.66;
-  slowLfo.frequency.value = 0.07;
-  slowLfoGain.gain.value = 4;
-
-  slowLfo.connect(slowLfoGain);
-  slowLfoGain.connect(airyPad.frequency);
-
-  lowPad.connect(master);
-  warmPad.connect(master);
-  airyPad.connect(master);
-
-  lowPad.start();
-  warmPad.start();
-  airyPad.start();
-  slowLfo.start();
-
-  shimmerInterval = window.setInterval(() => {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-
-    const now = audioCtx.currentTime;
-    const note = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    note.type = 'sine';
-    note.frequency.value = [392.0, 440.0, 493.88][Math.floor(Math.random() * 3)];
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.012, now + 0.18);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
-
-    note.connect(gain);
-    gain.connect(master);
-
-    note.start(now);
-    note.stop(now + 1.45);
-  }, 2400);
-
-  ambientNodes = { master, lowPad, warmPad, airyPad, slowLfo };
+function setAudioButtonState(isPlaying) {
+  if (!audioToggle) return;
+  audioToggle.textContent = isPlaying ? '⏸ Пауза вашей дорожки' : '▶ Включить вашу дорожку';
+  audioToggle.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
 }
 
-function stopAmbient() {
-  if (ambientNodes) {
-    ambientNodes.lowPad.stop();
-    ambientNodes.warmPad.stop();
-    ambientNodes.airyPad.stop();
-    ambientNodes.slowLfo.stop();
-    ambientNodes = null;
-  }
+async function startAudio() {
+  if (!ambientAudio) return;
 
-  if (shimmerInterval) {
-    window.clearInterval(shimmerInterval);
-    shimmerInterval = null;
+  ambientAudio.volume = 0.16;
+
+  try {
+    await ambientAudio.play();
+    audioActivated = true;
+    setAudioButtonState(true);
+  } catch {
+    setAudioButtonState(false);
   }
 }
 
-window.addEventListener(
-  'pointerdown',
-  () => {
-    if (!ambientNodes) startAmbient();
-  },
-  { once: true }
-);
+function stopAudio() {
+  if (!ambientAudio) return;
+  ambientAudio.pause();
+  setAudioButtonState(false);
+}
 
-window.addEventListener(
-  'keydown',
-  () => {
-    if (!ambientNodes) startAmbient();
-  },
-  { once: true }
-);
+if (audioToggle && ambientAudio) {
+  audioToggle.addEventListener('click', async () => {
+    if (ambientAudio.paused) {
+      await startAudio();
+    } else {
+      stopAudio();
+    }
+  });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stopAmbient();
-});
+  ambientAudio.addEventListener('ended', () => setAudioButtonState(false));
+
+  const tryAutoStart = async () => {
+    if (!audioActivated) {
+      await startAudio();
+    }
+  };
+
+  window.addEventListener('pointerdown', tryAutoStart, { once: true });
+  window.addEventListener('keydown', tryAutoStart, { once: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopAudio();
+    }
+  });
+
+  setAudioButtonState(false);
+}
 
 toggleCustomStyle();
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+
   clearErrors();
   statusEl.textContent = '';
   statusEl.className = 'status';
@@ -220,7 +182,10 @@ form.addEventListener('submit', async (e) => {
   const formData = Object.fromEntries(new FormData(form).entries());
   formData.musicStyle = styleSelect.value === 'Другое' ? customStyleInput.value.trim() : styleSelect.value;
 
-  const isValid = Object.entries(validators).every(([field]) => validateField(field, field === 'musicStyle' ? styleSelect.value : formData[field]));
+  const isValid = Object.entries(validators).every(([field]) => {
+    const value = field === 'musicStyle' ? styleSelect.value : formData[field];
+    return validateField(field, value);
+  });
 
   if (!isValid) return;
 
@@ -252,6 +217,7 @@ form.addEventListener('submit', async (e) => {
 
     statusEl.textContent = 'Спасибо! Заявка отправлена, мы скоро свяжемся с вами.';
     statusEl.classList.add('success');
+
     form.reset();
     toggleCustomStyle();
     clearErrors();
